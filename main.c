@@ -81,12 +81,10 @@ void op_LD(u8* x, u8 byte) {
 	s->pc += 1;
 }
 
-
 void op_OR(u8 x, u8 y) {
 	s->V[x] |= y;
 	s->pc += 1;
 }
-
 
 void op_AND(u8 x, u8 y) {
 	s->V[x] &= y;
@@ -137,7 +135,6 @@ void op_SHL(u8 x, u8 y) {
 	s->pc += 1;
 }
 
-
 void op_LDI(u16 x) {
 	s->I = x;
 	s->pc += 1;
@@ -163,16 +160,13 @@ void op_LDK(u8 x) {
 
 }
 
-
 void op_LDSPR(u8 x) {
 
 }
 
-
 void op_LDB(u8 x) {
 
 }
-
 
 void op_LDIX(u8 x) {
 
@@ -181,7 +175,6 @@ void op_LDIX(u8 x) {
 void op_LDXI(u8 x) {
 
 }
-
 
 // Syntatic sugar for defining instructions
 // Why wouldn't we modify C a little bit, just
@@ -343,15 +336,8 @@ void print(u16 start) {
 	for(int i=start;i<5+start;i++) {
 		instr(s->ram[i], 0);
 
-
 		if(i==s->pc) printf("[%s] ", code);
 		else printf("%s ", code);
-
-		//if(i==s->pc) printf("[%s:%04X] ", code, s->ram[i]);
-		//else printf("%s:%04X ", code, s->ram[i]);
-
-		//if(i==s->pc) printf("[%04X] ", s->ram[i]);
-		//else printf("%04X ", s->ram[i]);
 	}
 
 	putchar('\n');
@@ -425,7 +411,6 @@ void draw_program(int x, int y, int start) {
 		if(i>0 && s->ram[start+i]==0 && s->ram[start+(i-1)]==0) break;
 
 		char buf[20];
-		//strcpy(buf, code);
 		sprintf(buf, "%*s    0x%04X", 4, code, s->ram[start+i]);
 
 		if(s->pc!=start+i) draw_text(x, y+i*off, buf,(SDL_Color){0xff,0xff,0xff,0xff});
@@ -447,8 +432,6 @@ void draw_state(int x, int y) {
 		char buf[10]; sprintf(buf, "%04X", s->V[i]);
 		draw_text(150+i*off+x, y+2, buf, (SDL_Color){0xff,0xff,0xff,0xff});
 	}
-
-
 
 	char buf[20]; sprintf(buf, "PC  %04X", s->pc);
 	draw_text(x,y+line_off,buf, (SDL_Color){0xff,0xff,0xff,0xff});
@@ -472,15 +455,6 @@ int main() {
 				   0x0000, /*end*/};
 
 	load(prog, START,5);
-
-//	print(START);
-//	instr(0x7001);
-
-//	while(s->ram[s->pc] != 0xFFFF && s->ram[s->pc] != 0x0000) {
-//		print(START);
-//		instr(s->ram[s->pc], 1);
-//	}
-
 
 	init_video();
 	SDL_Event e;
