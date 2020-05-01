@@ -31,6 +31,16 @@ typedef struct {
 S* s; // s is the holds the current vm state
 u16 START = 0x200; // were the program is loaded
 char code[8]; // a little helper string which holds the name of the latest processed instruction
+u8 keyboard[16]={0};
+int cpu_interval = 50;
+int paused = 0;
+int help = 0;
+
+#define EMU_W 64
+#define EMU_H 32
+#define EMU_SCL 16
+
+u8 screen[EMU_W][EMU_H] = {0};
 
 S* new_S() {
 	S* s = calloc(1, sizeof(S));
@@ -39,7 +49,9 @@ S* new_S() {
 }
 
 void op_CLS() {
+	memset(screen, 0, sizeof(screen));
 
+	s->pc += 1;
 }
 
 void op_RET() {
@@ -141,7 +153,8 @@ void op_LDI(u16 x) {
 }
 
 void op_RND(u8 x, u8 kk) {
-
+	s->V[x] = rand()&kk;
+	s->pc += 1;
 }
 
 void op_DRW(u8 x, u8 y, u8 n) {
@@ -350,8 +363,13 @@ void print(u16 start) {
 }
 
 void update() {
-	if(s->ram[s->pc] != 0xFFFF && s->ram[s->pc] != 0x0000)
+	if(s->pc && !(s->ram[s->pc] == 0x0000 && s->ram[s->pc-1]==0x0000)) {
 		instr(s->ram[s->pc], 1);
+	}
+	else {
+		puts("HALT!");
+		paused=1;
+	}
 }
 
 SDL_Window* window=NULL;
@@ -363,7 +381,6 @@ unsigned int last_draw=0;
 unsigned int last_update=0;
 
 const char* fpath = "./share.ttf";
-
 
 #define W 1200
 #define H 800
@@ -405,32 +422,42 @@ void draw_program(int x, int y, int start) {
 	SDL_SetRenderDrawColor(renderer, 50, 50, 120, 0xff);
 	SDL_RenderFillRect(renderer, &r);
 
-	for(int i=0;i<44;i++) {
-		instr(s->ram[start+i], 0);
 
-		if(i>0 && s->ram[start+i]==0 && s->ram[start+(i-1)]==0) break;
+	char buf[10]; sprintf(buf, "RAM");
+	draw_text(x+5, 5, buf, (SDL_Color){0xff,0xff,0x8f,0xff});
+
+	for(int i=0;i<40;i++) {
+		instr(s->ram[start+i], 0);
 
 		char buf[20];
 		sprintf(buf, "%*s    0x%04X", 4, code, s->ram[start+i]);
 
 		if(s->pc!=start+i) draw_text(x, y+i*off, buf,(SDL_Color){0xff,0xff,0xff,0xff});
 		else draw_text(x, y+i*off, buf,(SDL_Color){200,20,20,255});
+
+		if(i>0 && s->ram[start+i]==0 && s->ram[start+(i-1)]==0) break;
 	}
 }
 
 void draw_state(int x, int y) {
-	int off = 45;
+	int off = 55;
 	int line_off = 30;
 
 	SDL_Rect r = {.x=0,.y=y,.w=1030,.h=H-y};
 	SDL_SetRenderDrawColor(renderer, 50, 50, 120, 0xff);
 	SDL_RenderFillRect(renderer, &r);
 
-	draw_text(x,y+2,"Registers", (SDL_Color){0xff,0xff,0xff,0xff});
+	draw_text(x,y+2,"CPU", (SDL_Color){0xff,0xff,0x8f,0xff});
 
 	for(int i=0;i<16;i++) {
 		char buf[10]; sprintf(buf, "%04X", s->V[i]);
 		draw_text(150+i*off+x, y+2, buf, (SDL_Color){0xff,0xff,0xff,0xff});
+	}
+
+	for(int i=0;i<16;i++) {
+		char buf[3]; sprintf(buf, "%X", i);
+		if(keyboard[i]) draw_text(400+i*15+x, y+line_off, buf, (SDL_Color){0xff,0xff,0xff,0xff});
+		else draw_text(400+i*15+x, y+line_off, buf, (SDL_Color){0x50,0x50,0x80,0xff});
 	}
 
 	char buf[20]; sprintf(buf, "PC  %04X", s->pc);
@@ -442,6 +469,71 @@ void draw_state(int x, int y) {
 
 	sprintf(buf, "I  %04X", s->I);
 	draw_text(x+300,y+line_off,buf, (SDL_Color){0xff,0xff,0xff,0xff});
+
+}
+
+
+void draw_controls(int start, int end) {
+
+	SDL_Rect r = {.x=0,.y=start,.w=1030,.h=end-start};
+	SDL_SetRenderDrawColor(renderer, 50, 50, 120, 0xff);
+	SDL_RenderFillRect(renderer, &r);
+
+
+	draw_text(5,start+5,"CONTROLS", (SDL_Color){0xff,0xff,0x8f,0xff});
+	draw_text(5,end-25,"Press H for help.", (SDL_Color){0xff,0xff,0xff,0xff});
+
+	float clock = -1;
+	if(cpu_interval > 0) clock = 1000.0f/(float)cpu_interval;
+
+	char buf[20]; sprintf(buf, "Clock: %0.2fHz", clock);
+	draw_text(200,start+5,buf, (SDL_Color){0xff,0xff,0xff,0xff});
+
+
+	sprintf(buf, "Paused");
+	if(paused) draw_text(500,start+5,buf, (SDL_Color){0xff,0xff,0xff,0xff});
+	else draw_text(500,start+5,buf, (SDL_Color){0x50,0x50,0x80,0xff});
+
+}
+
+void draw_help(int x, int y) {
+
+	int border = 5;
+
+	SDL_Rect r2 = {.x=x-border,.y=y-border,.w=500+2*border,.h=500+2*border};
+	SDL_SetRenderDrawColor(renderer, 50, 50, 50, 0xff);
+	SDL_RenderFillRect(renderer, &r2);
+	SDL_Rect r = {.x=x,.y=y,.w=500,.h=500};
+	SDL_SetRenderDrawColor(renderer, 10, 10, 10, 0xff);
+	SDL_RenderFillRect(renderer, &r);
+
+
+	draw_text(x+5,y+5,"ESCAPE: Exit, SPACE: Pause, H: Toggle Help", (SDL_Color){0xff,0xff,0xff,0xff});
+	draw_text(x+5,y+25,"UP/DOWN: Control Clock", (SDL_Color){0xff,0xff,0xff,0xff});
+}
+
+
+void draw_screen() {
+
+	SDL_SetRenderDrawColor(renderer, 50, 50, 150, 0xff);
+
+	for(int i=0;i<=EMU_W;i++) {
+		SDL_RenderDrawLine(renderer, i*EMU_SCL, 0, i*EMU_SCL, EMU_H*EMU_SCL);
+	}
+
+	for(int i=0;i<=EMU_H;i++) {
+		SDL_RenderDrawLine(renderer, 0, i*EMU_SCL,EMU_W*EMU_SCL,i*EMU_SCL);
+	}
+
+	for(int i=0; i<EMU_W; i++) {
+		for(int j=0;j<EMU_H;j++) {
+			if(screen[i][j]) {
+				SDL_Rect r = {.x=i*EMU_SCL, .y=j*EMU_SCL, .w=EMU_SCL, .h=EMU_SCL};
+				SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
+				SDL_RenderFillRect(renderer, &r);
+			}
+		}
+	}
 }
 
 int main() {
@@ -450,15 +542,20 @@ int main() {
 
 	u16 prog[] = { 0x7001, // Add 1 to V0
 				   0x8100, // Vx = Vy
-				   0x30FF, // skip if Vx = kk
+				   0x3040, // skip if Vx = kk
 				   0x1200, // jump to the begginnig,
+				   0x1206,
+				   0x0000,
 				   0x0000, /*end*/};
 
-	load(prog, START,5);
+	load(prog, START,7);
 
 	init_video();
 	SDL_Event e;
 	char buf[10];
+
+	screen[5][5] = 1;
+
 	while(!should_quit) {
 
 		unsigned int ticks = SDL_GetTicks();
@@ -468,11 +565,67 @@ int main() {
 			if(e.type == SDL_QUIT) should_quit=1;
 			else if(e.type == SDL_KEYDOWN) {
 				SDL_KeyCode sym = e.key.keysym.sym;
-				if(sym == SDLK_ESCAPE) should_quit=1;
+				if(sym == SDLK_ESCAPE) {
+					if(!help) should_quit=1;
+					else help = 0;
+				}
+
+
+				if(sym == SDLK_SPACE && !help) paused ^= 1;
+				if(sym == SDLK_h) help ^= 1, paused = 1;
+
+
+				if(sym == SDLK_UP) {
+					cpu_interval>>=1;
+					if(cpu_interval < 2) cpu_interval = 2;
+				}
+				if(sym == SDLK_DOWN) cpu_interval=((cpu_interval|1))<<1;
+
+
+				if(sym == SDLK_0) keyboard[0] = 1;
+				if(sym == SDLK_1) keyboard[1] = 1;
+				if(sym == SDLK_2) keyboard[2] = 1;
+				if(sym == SDLK_3) keyboard[3] = 1;
+				if(sym == SDLK_4) keyboard[4] = 1;
+				if(sym == SDLK_5) keyboard[5] = 1;
+				if(sym == SDLK_6) keyboard[6] = 1;
+				if(sym == SDLK_7) keyboard[7] = 1;
+				if(sym == SDLK_8) keyboard[8] = 1;
+				if(sym == SDLK_9) keyboard[9] = 1;
+
+				if(sym == SDLK_a) keyboard[0xa] = 1;
+				if(sym == SDLK_b) keyboard[0xb] = 1;
+				if(sym == SDLK_c) keyboard[0xc] = 1;
+				if(sym == SDLK_d) keyboard[0xd] = 1;
+				if(sym == SDLK_e) keyboard[0xe] = 1;
+				if(sym == SDLK_f) keyboard[0xf] = 1;
+
+			} else if(e.type == SDL_KEYUP) {
+
+				SDL_KeyCode sym = e.key.keysym.sym;
+
+
+				if(sym == SDLK_0) keyboard[0] = 0;
+				if(sym == SDLK_1) keyboard[1] = 0;
+				if(sym == SDLK_2) keyboard[2] = 0;
+				if(sym == SDLK_3) keyboard[3] = 0;
+				if(sym == SDLK_4) keyboard[4] = 0;
+				if(sym == SDLK_5) keyboard[5] = 0;
+				if(sym == SDLK_6) keyboard[6] = 0;
+				if(sym == SDLK_7) keyboard[7] = 0;
+				if(sym == SDLK_8) keyboard[8] = 0;
+				if(sym == SDLK_9) keyboard[9] = 0;
+
+				if(sym == SDLK_a) keyboard[0xa] = 0;
+				if(sym == SDLK_b) keyboard[0xb] = 0;
+				if(sym == SDLK_c) keyboard[0xc] = 0;
+				if(sym == SDLK_d) keyboard[0xd] = 0;
+				if(sym == SDLK_e) keyboard[0xe] = 0;
+				if(sym == SDLK_f) keyboard[0xf] = 0;
 			}
 		}
 
-		if(ticks-last_update>200) {
+		if(ticks-last_update>cpu_interval && !paused) {
 			last_update=ticks;
 			update();
 		}
@@ -483,14 +636,17 @@ int main() {
 			SDL_SetRenderDrawColor(renderer, 20, 30, 100, 0xff);
 			SDL_RenderClear(renderer);
 
-			draw_program(1040, 3, START);
+			draw_program(1040, 40, START);
 			draw_state(10,740);
+			draw_controls(600, 730);
+			draw_screen();
+
+			if(help) draw_help(25, 25);
 
 			SDL_RenderPresent(renderer);
 
 			last_draw = ticks;
 		}
-
 	}
 
 	free(s);
