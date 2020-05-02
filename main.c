@@ -32,7 +32,7 @@ S* s; // s is the holds the current vm state
 u16 START = 0x200; // were the program is loaded
 char code[8]; // a little helper string which holds the name of the latest processed instruction
 u8 keyboard[16]={0};
-int cpu_interval = 50;
+int cpu_interval = 500;
 int paused = 0;
 int help = 0;
 
@@ -40,10 +40,34 @@ int help = 0;
 #define EMU_H 32
 #define EMU_SCL 16
 
-u8 screen[EMU_W][EMU_H] = {0};
+u8 screen[EMU_W/8][EMU_H] = {0};
+
+int font_height = 5;
+u8 font_sprite [] = {
+	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+	0x20, 0x60, 0x20, 0x20, 0x70, // 1
+	0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+	0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+	0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+	0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+	0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+	0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+	0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+	0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+	0xF0, 0x90, 0xF0, 0x90, 0x90, // a
+	0xE0, 0x90, 0xE0, 0x90, 0xE0, // b
+	0xF0, 0x80, 0x80, 0x80, 0xF0, // c
+	0xE0, 0x90, 0x90, 0x90, 0xE0, // d
+	0xF0, 0x80, 0xF0, 0x80, 0xF0, // e
+	0xF0, 0x80, 0xF0, 0x80, 0x80  // f
+};
 
 S* new_S() {
 	S* s = calloc(1, sizeof(S));
+
+	for(int i=0;i< 16*font_height;i++) {
+		s->ram[i] = font_sprite[i];
+	}
 
 	return s;
 }
@@ -55,7 +79,8 @@ void op_CLS() {
 }
 
 void op_RET() {
-
+	s->pc = s->stack[s->sp];
+	s->sp -= 1;
 }
 
 void op_JMP(u16 addr) {
@@ -159,34 +184,93 @@ void op_RND(u8 x, u8 kk) {
 
 void op_DRW(u8 x, u8 y, u8 n) {
 
+	x = s->V[x], y = s->V[y];
+
+	int start = x/8;
+	int off = x%8;
+
+	int scnd = (5-(5+off)%8);
+
+	int f = 0;
+
+
+	for(int i=0;i<n;i++) {
+		int byte = s->ram[s->I+i];
+
+		//s->V[0xf] = ((screen[start][i+y]|(byte<<off))==(screen[start][i+y]^(byte<<off)));
+		int or = screen[start][i+y] | (byte>>off);
+		int xor = screen[start][i+y] ^ (byte>>off);
+
+		if(or != xor) f=1;
+
+		screen[start][i+y] ^= (byte>>off);
+
+		if(off) {
+			int or = screen[start+1][i+y] | (byte>>off);
+			int xor = screen[start+1][i+y] ^ (byte>>off);
+
+			if(or!=xor) f=1;
+
+			screen[start+1][i+y] ^= (byte<<scnd);
+		}
+	}
+
+	s->V[0xf]=f;
+
+	s->pc += 1;
 }
 
 void op_SKP(u8 x) {
-
+	if(keyboard[x]) s->pc += 1;
+	s->pc += 1;
 }
 
 void op_SKNP(u8 x) {
-
+	if(!keyboard[x]) s->pc += 1;
+	s->pc += 1;
 }
 
 void op_LDK(u8 x) {
-
+	int i=0;
+	for(int i=0;i<16;i++) {
+		if(keyboard[i]) {
+			s->V[x] = i;
+			s->pc += 1;
+			return;
+		}
+	}
 }
 
-void op_LDSPR(u8 x) {
-
+void op_LDS(u8 x) {
+	s->I = font_height * s->V[x];
+	s->pc += 1;
 }
 
 void op_LDB(u8 x) {
+	int number = s->V[x];
 
+	s->ram[s->I] = number/100;
+	s->ram[s->I+1] = (number/10)%10;
+	s->ram[s->I+2] = number%10;
+
+	s->pc += 1;
 }
 
 void op_LDIX(u8 x) {
+	for(int i=0;i<x;i++) {
+		s->ram[i+s->I] = s->V[i];
+	}
 
+	s->pc += 1;
 }
 
 void op_LDXI(u8 x) {
 
+	for(int i=0;i<x;i++) {
+		s->V[i] = s->ram[i+s->I];
+	}
+
+	s->pc += 1;
 }
 
 // Syntatic sugar for defining instructions
@@ -313,7 +397,7 @@ void instr(u16 in, int f) {
 					OP(LDI, s->V[x]+s->I);
 					break;
 				case 0x29:
-					OP(LDSPR, x);
+					OP(LDS, x);
 					break;
 				case 0x33:
 					OP(LDB, x);
@@ -525,12 +609,15 @@ void draw_screen() {
 		SDL_RenderDrawLine(renderer, 0, i*EMU_SCL,EMU_W*EMU_SCL,i*EMU_SCL);
 	}
 
-	for(int i=0; i<EMU_W; i++) {
+	for(int i=0; i<EMU_W/8; i++) {
 		for(int j=0;j<EMU_H;j++) {
-			if(screen[i][j]) {
-				SDL_Rect r = {.x=i*EMU_SCL, .y=j*EMU_SCL, .w=EMU_SCL, .h=EMU_SCL};
-				SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
-				SDL_RenderFillRect(renderer, &r);
+
+			for(int k=0;k<8;k++) {
+				if(screen[i][j]&(1<<k)) {
+					SDL_Rect r = {.x=(8*i+(7-k))*EMU_SCL, .y=j*EMU_SCL, .w=EMU_SCL, .h=EMU_SCL};
+					SDL_SetRenderDrawColor(renderer, 0xff, 0xff, 0xff, 0xff);
+					SDL_RenderFillRect(renderer, &r);
+				}
 			}
 		}
 	}
@@ -540,21 +627,26 @@ int main() {
 
 	s = new_S();
 
-	u16 prog[] = { 0x7001, // Add 1 to V0
-				   0x8100, // Vx = Vy
-				   0x3040, // skip if Vx = kk
-				   0x1200, // jump to the begginnig,
-				   0x1206,
-				   0x0000,
-				   0x0000, /*end*/};
+	u16 prog[] = {0xF029, // I = spr Vx
+				  0x0000,
+				  0xD005, // draw 5 lines at (1,1)
+				  0x7001, // Add 1 to V0
+				  0x3010, // skip if Vx = kk
+				  0x1200, // jump to the begginnig,
 
-	load(prog, START,7);
+				  0xF10A, // way for key press
+
+				  0xA200, // I = 200
+				  0xF033, // store bcd representation on I
+				  0x120B, // jump to halt
+				  0x0000,
+				  0x0000, /*end*/};
+
+	load(prog, START,sizeof(prog)/sizeof(u16));
 
 	init_video();
 	SDL_Event e;
 	char buf[10];
-
-	screen[5][5] = 1;
 
 	while(!should_quit) {
 
