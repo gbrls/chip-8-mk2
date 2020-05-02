@@ -189,7 +189,6 @@ void op_DRW(u8 x, u8 y, u8 n) {
 	x = s->V[x], y = s->V[y];
 
 	int start = x/8;
-	start %=8;
 	int off = x%8;
 
 	int scnd = (5-(5+off)%8);
@@ -201,20 +200,20 @@ void op_DRW(u8 x, u8 y, u8 n) {
 		int byte = s->ram[s->I+i];
 
 		//s->V[0xf] = ((screen[start][i+y]|(byte<<off))==(screen[start][i+y]^(byte<<off)));
-		int or = screen[start][i+y] | (byte>>off);
-		int xor = screen[start][i+y] ^ (byte>>off);
+		int or = screen[start%8][i+y] | (byte>>off);
+		int xor = screen[start%8][i+y] ^ (byte>>off);
 
 		if(or != xor) f=1;
 
 		screen[start][(i+y)%EMU_H] ^= (byte>>off);
 
 		if(off) {
-			int or = screen[start+1][(i+y)%EMU_H] | (byte>>off);
-			int xor = screen[start+1][(i+y)%EMU_H] ^ (byte>>off);
+			int or = screen[(start+1)%8][(i+y)%EMU_H] | (byte>>off);
+			int xor = screen[(start+1)%8][(i+y)%EMU_H] ^ (byte>>off);
 
 			if(or!=xor) f=1;
 
-			screen[start+1][(i+y)%EMU_H] ^= (byte<<scnd);
+			screen[(start+1)%8][(i+y)%EMU_H] ^= (byte<<scnd);
 		}
 	}
 
@@ -658,8 +657,12 @@ int main() {
 	//load_program("./test_opcode.ch8", 0x200);
 	//load_program("./roms/demos/maze (alt) [david winter, 199x].ch8", 0x200);
 	//load_program("./roms/demos/Zero Demo [zeroZshadow, 2007].ch8", 0x200);
-	//load_program("./roms/games/pong (1 player).ch8", 0x200);
-	load_program("./roms/games/Pong [Paul Vervalin, 1990].ch8", 0x200);
+	//load_program("./roms/games/Pong [Paul Vervalin, 1990].ch8", 0x200);
+	//load_program("./roms/games/Breakout (Brix hack) [David Winter, 1997].ch8", 0x200);
+	//load_program("./roms/games/Brick (Brix hack, 1990).ch8", 0x200);
+	//load_program("./roms/games/Space Invaders [David Winter].ch8", 0x200);
+	//load_program("./roms/games/Tetris [Fran Dachille, 1991].ch8", 0x200);
+	load_program("./roms/games/Tank.ch8", 0x200);
 
 
 
