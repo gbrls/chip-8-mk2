@@ -19,7 +19,7 @@ typedef struct {
 	u16 pc;
 	u16 stack[16];
 
-	u16 ram[ADDR_MAX]; // FIXME: u8 or u16?
+	u8 ram[ADDR_MAX];
 	u8 sp;
 	u8 V[16]; // registers
 	u16 I; // Address register
@@ -32,7 +32,7 @@ S* s; // s is the holds the current vm state
 u16 START = 0x200; // were the program is loaded
 char code[8]; // a little helper string which holds the name of the latest processed instruction
 u8 keyboard[16]={0};
-int cpu_interval = 500;
+int cpu_interval = 2;
 int paused = 0;
 int help = 0;
 
@@ -69,13 +69,15 @@ S* new_S() {
 		s->ram[i] = font_sprite[i];
 	}
 
+	s->sp = 0;
+
 	return s;
 }
 
 void op_CLS() {
 	memset(screen, 0, sizeof(screen));
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_RET() {
@@ -88,8 +90,8 @@ void op_JMP(u16 addr) {
 }
 
 void op_CALL(u16 addr) {
-	s->sp++;
-	s->stack[s->sp] = s->pc;
+	s->sp+=1;
+	s->stack[s->sp] = s->pc+2;
 	s->pc = addr;
 }
 
@@ -98,39 +100,39 @@ void op_SE(u8 x, u8 byte) {
 	x = s->V[x];
 
 	if(x == byte) {
-		s->pc += 1;
+		s->pc += 2;
 	}
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SNE(u8 x, u8 byte) {
 
-	if(x != byte) {
-		s->pc += 1;
+	if(s->V[x] != byte) {
+		s->pc += 2;
 	}
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_LD(u8* x, u8 byte) {
 	*x = byte;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_OR(u8 x, u8 y) {
 	s->V[x] |= y;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_AND(u8 x, u8 y) {
 	s->V[x] &= y;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_XOR(u8 x, u8 y) {
 	s->V[x] ^= y;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_ADD(u8 x, u8 y) {
@@ -141,45 +143,45 @@ void op_ADD(u8 x, u8 y) {
 
 	s->V[x] = (a+b)&0xff;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SUB(u8 x, u8 y) {
 	s->V[0xF] = (s->V[x]>y);
 	s->V[x] -= y;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SHR(u8 x, u8 y) {
 	s->V[0xF] = s->V[x]&1;
 	s->V[x]/=2;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SUBN(u8 x, u8 y) {
 	s->V[0xF] = (s->V[x]<y);
 	s->V[x] = y - s->V[x];
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SHL(u8 x, u8 y) {
 	s->V[0xF] = s->V[x]&1;
 	s->V[x]*=2;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_LDI(u16 x) {
 	s->I = x;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_RND(u8 x, u8 kk) {
 	s->V[x] = rand()&kk;
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_DRW(u8 x, u8 y, u8 n) {
@@ -187,6 +189,7 @@ void op_DRW(u8 x, u8 y, u8 n) {
 	x = s->V[x], y = s->V[y];
 
 	int start = x/8;
+	start %=8;
 	int off = x%8;
 
 	int scnd = (5-(5+off)%8);
@@ -203,31 +206,31 @@ void op_DRW(u8 x, u8 y, u8 n) {
 
 		if(or != xor) f=1;
 
-		screen[start][i+y] ^= (byte>>off);
+		screen[start][(i+y)%EMU_H] ^= (byte>>off);
 
 		if(off) {
-			int or = screen[start+1][i+y] | (byte>>off);
-			int xor = screen[start+1][i+y] ^ (byte>>off);
+			int or = screen[start+1][(i+y)%EMU_H] | (byte>>off);
+			int xor = screen[start+1][(i+y)%EMU_H] ^ (byte>>off);
 
 			if(or!=xor) f=1;
 
-			screen[start+1][i+y] ^= (byte<<scnd);
+			screen[start+1][(i+y)%EMU_H] ^= (byte<<scnd);
 		}
 	}
 
 	s->V[0xf]=f;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_SKP(u8 x) {
-	if(keyboard[x]) s->pc += 1;
-	s->pc += 1;
+	if(keyboard[s->V[x]]) s->pc += 2;
+	s->pc += 2;
 }
 
 void op_SKNP(u8 x) {
-	if(!keyboard[x]) s->pc += 1;
-	s->pc += 1;
+	if(!keyboard[s->V[x]]) s->pc += 2;
+	s->pc += 2;
 }
 
 void op_LDK(u8 x) {
@@ -235,15 +238,15 @@ void op_LDK(u8 x) {
 	for(int i=0;i<16;i++) {
 		if(keyboard[i]) {
 			s->V[x] = i;
-			s->pc += 1;
+			s->pc += 2;
 			return;
 		}
 	}
 }
 
 void op_LDS(u8 x) {
-	s->I = font_height * s->V[x];
-	s->pc += 1;
+	s->I = (font_height * s->V[x]);
+	s->pc += 2;
 }
 
 void op_LDB(u8 x) {
@@ -253,24 +256,24 @@ void op_LDB(u8 x) {
 	s->ram[s->I+1] = (number/10)%10;
 	s->ram[s->I+2] = number%10;
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_LDIX(u8 x) {
-	for(int i=0;i<x;i++) {
-		s->ram[i+s->I] = s->V[i];
+	for(int i=0;i<=x;i++) {
+		s->ram[s->I+i] = s->V[i];
 	}
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 void op_LDXI(u8 x) {
 
-	for(int i=0;i<x;i++) {
-		s->V[i] = s->ram[i+s->I];
+	for(int i=0;i<=x;i++) {
+		s->V[i] = s->ram[s->I+i];
 	}
 
-	s->pc += 1;
+	s->pc += 2;
 }
 
 // Syntatic sugar for defining instructions
@@ -283,7 +286,11 @@ void op_LDXI(u8 x) {
 	} while(0)
 
 
-void instr(u16 in, int f) {
+int instr(u16 start, int f) {
+
+	u16 in = (s->ram[start]<<(2*4)) | s->ram[start+1];
+	//if(f) printf("%04X, %02X %02X\n", in, s->ram[start], s->ram[start+1]);
+
 	u16 nnn, n, x, y, kk, h, ht, hl;
 
 	nnn = 0x0fff & in;
@@ -295,10 +302,14 @@ void instr(u16 in, int f) {
 	ht = (0xf000 & in)>>(3*4);
 	hl = (0x0f00 & in)>>(2*4);
 
+	//if(f) printf("nnn: %04X, n: %01X, x: %01X, y %01X, kk %02X\n", nnn, n, x,y,kk);
+
 	switch (ht) {
 		case 0x0:
 			if(n == 0x0) {
-				OP(CLS);
+				if(in != 0x0000) {
+					OP(CLS);
+				}
 			} else if(n == 0xE) {
 				OP(RET);
 			}
@@ -414,11 +425,13 @@ void instr(u16 in, int f) {
 			break;
 
 		default:
+			printf("NOT IMPLEMENTED (%04X)\n", in);
 			break;
 	}
+	return in;
 }
 
-void load(u16* tape, u16 start, int n) {
+void load(u8* tape, u16 start, int n) {
 	for(int i=start;i<start+n;i++) {
 		s->ram[i] = tape[i-start];
 	}
@@ -431,7 +444,7 @@ void print(u16 start) {
 	putchar('\n');
 
 	for(int i=start;i<5+start;i++) {
-		instr(s->ram[i], 0);
+		instr(i, 0);
 
 		if(i==s->pc) printf("[%s] ", code);
 		else printf("%s ", code);
@@ -447,13 +460,8 @@ void print(u16 start) {
 }
 
 void update() {
-	if(s->pc && !(s->ram[s->pc] == 0x0000 && s->ram[s->pc-1]==0x0000)) {
-		instr(s->ram[s->pc], 1);
-	}
-	else {
-		puts("HALT!");
-		paused=1;
-	}
+	u16 in = instr(s->pc, 1);
+	if(in == 0x0000) paused = 1;
 }
 
 SDL_Window* window=NULL;
@@ -510,16 +518,21 @@ void draw_program(int x, int y, int start) {
 	char buf[10]; sprintf(buf, "RAM");
 	draw_text(x+5, 5, buf, (SDL_Color){0xff,0xff,0x8f,0xff});
 
+	int poff=0;
+	if(s->pc > 80+start) {
+		poff = (s->pc - start)/2;
+	}
+
 	for(int i=0;i<40;i++) {
-		instr(s->ram[start+i], 0);
+		int in = instr(start+2*(i+poff), 0);
 
 		char buf[20];
-		sprintf(buf, "%*s    0x%04X", 4, code, s->ram[start+i]);
+		sprintf(buf, "%*s     %02X %02X", 4, code, in>>(2*4),in&0x00ff);
 
-		if(s->pc!=start+i) draw_text(x, y+i*off, buf,(SDL_Color){0xff,0xff,0xff,0xff});
+		if(s->pc!=start+2*(i+poff)) draw_text(x, y+i*off, buf,(SDL_Color){0xff,0xff,0xff,0xff});
 		else draw_text(x, y+i*off, buf,(SDL_Color){200,20,20,255});
 
-		if(i>0 && s->ram[start+i]==0 && s->ram[start+(i-1)]==0) break;
+		if(in == 0x0000) break;
 	}
 }
 
@@ -623,26 +636,48 @@ void draw_screen() {
 	}
 }
 
+void load_program(char* name, int start) {
+	FILE* f;
+	f = fopen(name, "rb");
+
+	u8 buf[ADDR_MAX];
+	fread(buf,ADDR_MAX-start, 1, f);
+
+	puts("File read.");
+
+	load(buf, start, ADDR_MAX-start);
+
+	fclose(f);
+
+	puts("Program loaded.");
+}
+
 int main() {
 
 	s = new_S();
+	//load_program("./test_opcode.ch8", 0x200);
+	//load_program("./roms/demos/maze (alt) [david winter, 199x].ch8", 0x200);
+	//load_program("./roms/demos/Zero Demo [zeroZshadow, 2007].ch8", 0x200);
+	//load_program("./roms/games/pong (1 player).ch8", 0x200);
+	load_program("./roms/games/Pong [Paul Vervalin, 1990].ch8", 0x200);
 
-	u16 prog[] = {0xF029, // I = spr Vx
-				  0x0000,
-				  0xD005, // draw 5 lines at (1,1)
-				  0x7001, // Add 1 to V0
-				  0x3010, // skip if Vx = kk
-				  0x1200, // jump to the begginnig,
 
-				  0xF10A, // way for key press
 
-				  0xA200, // I = 200
-				  0xF033, // store bcd representation on I
-				  0x120B, // jump to halt
-				  0x0000,
-				  0x0000, /*end*/};
+	u8 prog[] = {0x63,0x08,
+				 0xF3,0x29, // I = spr Vx
+				 //0x00,0xE0,
+				 0xD0,0x05, // draw 5 lines at (1,1)
+				 0x70,0x01, // Add 1 to V0
+				 //0x30,0xFF, // skip if Vx = kk
+				 0x12,0x00, // jump to the begginnig,
 
-	load(prog, START,sizeof(prog)/sizeof(u16));
+				 0xF1,0x0A, // way for key press
+
+				 0xA2,0x00, // I = 200
+				 0xF0,0x33, // store bcd representation on I
+				 0x00,0x00};
+
+	//load(prog, START,sizeof(prog)/sizeof(u8));
 
 	init_video();
 	SDL_Event e;
@@ -722,7 +757,11 @@ int main() {
 			update();
 		}
 
-		if(ticks-last_draw>20) {
+		if(ticks-last_draw>16) {
+
+			if(s->delay) s->delay -= 1;
+			if(s->sound) s->sound -= 1;
+
 			sprintf(buf, "%04X", ticks);
 
 			SDL_SetRenderDrawColor(renderer, 20, 30, 100, 0xff);
