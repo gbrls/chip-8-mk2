@@ -14,6 +14,9 @@ typedef unsigned char u8;
 // TODO: implement a queue which holds the lastest states,
 // highlight differences from the current state from the previous
 
+//TODO:
+//sound!
+
 typedef struct {
 
 	u16 pc;
@@ -111,6 +114,7 @@ void op_SNE(u8 x, u8 byte) {
 	if(s->V[x] != byte) {
 		s->pc += 2;
 	}
+
 
 	s->pc += 2;
 }
